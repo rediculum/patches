@@ -1,0 +1,245 @@
+# This patch was taken from Ticket 1486377 of trac.roundcube.net and adopted to match the RFC 2798
+#
+# Only usable for v0.5 and higher
+#
+# Caveats:
+# It only applies the php files, no database patch!!! (I'm using LDAP)
+# It patches only the language files en_US and de_CH. Edit other language files by hand
+#
+# Wed Jul 28 10:31:14 CET 2010 hanr - Modified for v.0.4 compatibility
+# Mon Mar  7 11:13:19 CET 2011 hanr - Modified for v.0.5 compatibility
+#                                     Changed location label to location_place because newly used by RC
+#
+diff -ruw roundcubemail_svn/config/main.inc.php roundcubemail/config/main.inc.php
+--- roundcubemail_svn/config/main.inc.php       2010-05-04 16:39:10.000000000 -0600
++++ roundcubemail/config/main.inc.php   2010-05-04 16:46:25.000000000 -0600
+@@ -425,6 +425,14 @@
+   'email_field'   => 'mail',  // this field represents the contact's e-mail
+   'surname_field' => 'sn',    // this field represents the contact's last name
+   'firstname_field' => 'gn',  // this field represents the contact's first name
++  'work_number_field'   => 'Phone', // contact work phone number
++  'home_number_field'   => 'homePhone', // contact home phone number
++  'fax_number_field'    => 'Fax', // contact fax number
++  'mobile_number_field' => 'mobile', // contact cell number
++  'title_field'         => 'title', // contact title
++  'street_field'        => 'street', // contact street name
++  'postal_code_field'   => 'postalCode', // contact postal code
++  'location_place_field'      => 'l', // contact location
+   'sort'          => 'cn',    // The field to sort the listing by.
+   'scope'         => 'sub',   // search mode: sub|base|list
+   'filter'        => '',      // used for basic listing (if not empty) and will be &'d with search queries. example: status=act
+Only in roundcubemail/config: main.inc.php.orig
+diff -ruw roundcubemail_svn/program/include/rcube_contacts.php roundcubemail/program/include/rcube_contacts.php
+--- roundcubemail_svn/program/include/rcube_contacts.php        2010-05-04 16:38:34.000000000 -0600
++++ roundcubemail/program/include/rcube_contacts.php    2010-05-04 16:46:25.000000000 -0600
+@@ -42 +42 @@
+-    private $table_cols = array('name', 'email', 'firstname', 'surname', 'vcard');
++    private $table_cols = array('name', 'email', 'firstname', 'surname', 'work_number', 'home_number', 'fax_number', 'mobile_number', 'title', 'street', 'postal_code', 'location_place', 'vcard');
+Only in roundcubemail/program/include: rcube_contacts.php.orig
+diff -ruw roundcubemail_svn/program/include/rcube_vcard.php roundcubemail/program/include/rcube_vcard.php
+--- roundcubemail_svn/program/include/rcube_vcard.php   2010-05-04 16:38:34.000000000 -0600
++++ roundcubemail/program/include/rcube_vcard.php       2010-05-04 16:46:25.000000000 -0600
+@@ -75,6 +75,29 @@
+     $this->nickname = $this->raw['NICKNAME'][0][0];
+     $this->organization = $this->raw['ORG'][0][0];
+     $this->business = ($this->raw['X-ABSHOWAS'][0][0] == 'COMPANY') || (join('', (array)$this->raw['N'][0]) == '' && !empty($this->organization));
++    $this->title = $this->raw['TITLE'][0];
++    foreach ($this->raw['LABEL'] as $entry) {
++        if ($entry['type'][0] == "HOME"){
++            $this->location_place = $entry[0];
++        }
++        elseif ($entry['type'][0] == "WORK") {
++            $this->postal_code = $entry[0];
++        }
++    }
++    foreach ($this->raw['TEL'] as $entry) {
++        if ($entry['type'][0] == "HOME"){
++            $this->home_number = $entry[0];
++        }
++        elseif ($entry['type'][0] == "WORK") {
++            $this->work_number = $entry[0];
++        }
++        elseif ($entry['type'][0] == "CELL") {
++            $this->mobile_number = $entry[0];
++        }
++        elseif ($entry['type'][0] == "FAX") {
++            $this->fax_number = $entry[0];
++        }
++    }
+ 
+     foreach ((array)$this->raw['EMAIL'] as $i => $raw_email)
+       $this->email[$i] = is_array($raw_email) ? $raw_email[0] : $raw_email;
+@@ -145,6 +162,47 @@
+           $this->raw['EMAIL'][$index][0] = $value;
+         }
+         break;
++
++      case 'home_number':
++        $index=$this->get_type_index('TEL','HOME');
++        if (!is_array($this->raw['TEL'][$index])) {
++            $this->raw['TEL'][$index] =  array(0 => $value, 'type' => 'HOME');
++        }
++        else {
++            $this->raw['TEL'][0][0] = $value;
++        }
++        break;
++
++      case 'work_number':
++        $index=$this->get_type_index('TEL','WORK');
++        if (!is_array($this->raw['TEL'][$index])) {
++            $this->raw['TEL'][$index] = array(0 => $value, 'type' => 'WORK');
++        }
++        else {
++            $this->raw['TEL'][0][0] = $value;
++        }
++        break;
++
++      case 'mobile_number':
++        $index=$this->get_type_index('TEL','CELL');
++        if (!is_array($this->raw['TEL'][$index])) {
++            $this->raw['TEL'][$index] = array(0 => $value, 'type' => 'CELL');
++        }
++        else {
++            $this->raw['TEL'][0][0] = $value;
++        }
++        break;
++
++      case 'fax_number':
++        $index=$this->get_type_index('TEL','FAX');
++        if (!is_array($this->raw['TEL'][$index])) {
++            $this->raw['TEL'][$index] = array(0 => $value, 'type' => 'FAX');
++        }
++        else {
++            $this->raw['TEL'][0][0] = $value;
++        }
++        break;
++
+     }
+   }
+ 
+diff -ruw roundcubemail_svn/program/localization/de_CH/labels.inc roundcubemail/program/localization/de_CH/labels.inc
+--- roundcubemail_svn/program/localization/de_CH/labels.inc     2010-05-04 16:38:26.000000000 -0600
++++ roundcubemail/program/localization/de_CH/labels.inc 2010-05-04 16:46:25.000000000 -0600
+@@ -200,0 +200,09 @@
++$labels['phone']         = 'Telefon';
++$labels['work_number']   = 'Arbeit';
++$labels['home_number']   = 'Privat';
++$labels['fax_number']    = 'Fax';
++$labels['mobile_number'] = 'Mobile';
++$labels['title']         = 'Titel';
++$labels['street']       = 'Strasse';
++$labels['postal_code']  = 'Postleitzahl';
++$labels['location_place']  = 'Ort';
+diff -ruw roundcubemail_svn/program/localization/en_US/labels.inc roundcubemail/program/localization/en_US/labels.inc
+--- roundcubemail_svn/program/localization/en_US/labels.inc     2010-05-04 16:38:26.000000000 -0600
++++ roundcubemail/program/localization/en_US/labels.inc 2010-05-04 16:46:25.000000000 -0600
+@@ -242,6 +242,15 @@
+ $labels['firstname'] = 'First name';
+ $labels['surname']   = 'Last name';
+ $labels['email']     = 'E-Mail';
++$labels['phone']         = 'Phone';
++$labels['work_number']   = 'Work Number';
++$labels['home_number']   = 'Home Number';
++$labels['fax_number']    = 'Fax Number';
++$labels['mobile_number'] = 'Mobile Number';
++$labels['title']         = 'Title';
++$labels['street']       = 'Street';
++$labels['postal_code']  = 'Postal Code';
++$labels['location_place']  = 'Location';
+ 
+ $labels['addcontact'] = 'Add new contact';
+ $labels['editcontact'] = 'Edit contact';
+diff -ruw roundcubemail_svn/program/steps/addressbook/edit.inc roundcubemail/program/steps/addressbook/edit.inc
+--- roundcubemail_svn/program/steps/addressbook/edit.inc        2010-05-04 16:38:26.000000000 -0600
++++ roundcubemail/program/steps/addressbook/edit.inc    2010-05-04 16:46:25.000000000 -0600
+@@ -58,6 +58,14 @@
+                 'firstname' => array('type' => 'text', 'size' => $i_size),
+                 'surname' => array('type' => 'text', 'size' => $i_size),
+                 'email' => array('type' => 'text', 'size' => $i_size),
++                'work_number' => array('type' => 'text', 'size' => $i_size),
++                'home_number' => array('type' => 'text', 'size' => $i_size),
++                'fax_number' => array('type' => 'text', 'size' => $i_size),
++                'mobile_number' => array('type' => 'text', 'size' => $i_size),
++                'title' => array('type' => 'text', 'size' => $i_size),
++                'street' => array('type' => 'text', 'size' => $i_size),
++                'postal_code' => array('type' => 'text', 'size' => $i_size),
++                'location_place' => array('type' => 'text', 'size' => $i_size),
+             ),
+         ),
+     );
+diff -ruw roundcubemail_svn/program/steps/addressbook/export.inc roundcubemail/program/steps/addressbook/export.inc
+--- roundcubemail_svn/program/steps/addressbook/export.inc      2010-05-04 16:38:26.000000000 -0600
++++ roundcubemail/program/steps/addressbook/export.inc  2010-05-04 16:46:25.000000000 -0600
+@@ -35,6 +35,14 @@
+   $vcard->set('firstname', $row['firstname']);
+   $vcard->set('surname', $row['surname']);
+   $vcard->set('email', $row['email']);
++  $vcard->set('title', $row['title']);
++  $vcard->set('street', $row['street']);
++  $vcard->set('work_number', $row['work_number']);
++  $vcard->set('home_number', $row['home_number']);
++  $vcard->set('mobile_number', $row['mobile_number']);
++  $vcard->set('fax_number', $row['fax_number']);
++  $vcard->set('postal_code', $row['postal_code']);
++  $vcard->set('location_place', $row['location_place']);
+ 
+   echo $vcard->export();
+ }
+diff -ruw roundcubemail_svn/program/steps/addressbook/import.inc roundcubemail/program/steps/addressbook/import.inc
+--- roundcubemail_svn/program/steps/addressbook/import.inc      2010-05-04 16:38:26.000000000 -0600
++++ roundcubemail/program/steps/addressbook/import.inc  2010-05-04 16:46:25.000000000 -0600
+@@ -152,6 +152,14 @@
+         'firstname' => $vcard->firstname,
+         'surname' => $vcard->surname,
+         'email' => $email,
++        'work_number'   => $vcard->work_number,
++        'home_number'   => $vcard->home_number,
++        'mobile_number' => $vcard->mobile_number,
++        'fax_number'    => $vcard->fax_number,
++        'title'         => $vcard->title,
++        'street'       => $vcard->street,
++        'postal_code'  => $vcard->postal_code,
++        'location_place'  => $vcard->location_place,
+         'vcard' => $vcard->export(),
+       );
+ 
+diff -ruw roundcubemail_svn/program/steps/addressbook/save.inc roundcubemail/program/steps/addressbook/save.inc
+--- roundcubemail_svn/program/steps/addressbook/save.inc        2010-05-04 16:38:26.000000000 -0600
++++ roundcubemail/program/steps/addressbook/save.inc    2010-05-04 16:46:25.000000000 -0600
+@@ -40,7 +40,7 @@
+ 
+ 
+ // setup some vars we need
+-$a_save_cols = array('name', 'firstname', 'surname', 'email');
++$a_save_cols = array('name', 'firstname', 'surname', 'email', 'work_number', 'home_number', 'fax_number', 'mobile_number', 'title', 'street', 'postal_code', 'location_place');
+ $a_record = array();
+ 
+ // read POST values into hash array
+diff -ruw roundcubemail_svn/program/steps/addressbook/show.inc roundcubemail/program/steps/addressbook/show.inc
+--- roundcubemail_svn/program/steps/addressbook/show.inc        2010-05-04 16:38:26.000000000 -0600
++++ roundcubemail/program/steps/addressbook/show.inc    2010-05-04 16:46:25.000000000 -0600
+@@ -49,7 +49,15 @@
+                 'name' => array('type' => 'text', 'size' => $i_size),
+                 'firstname' => array('type' => 'text', 'size' => $i_size),
+                 'surname' => array('type' => 'text', 'size' => $i_size),
+                 'email' => array('type' => 'text', 'size' => $i_size),
++               'work_number' => array('type' => 'text', 'size' => $i_size),
++               'home_number' => array('type' => 'text', 'size' => $i_size),
++               'fax_number' => array('type' => 'text', 'size' => $i_size),
++               'mobile_number' => array('type' => 'text', 'size' => $i_size),
++               'title' => array('type' => 'text', 'size' => $i_size),
++               'street' => array('type' => 'text', 'size' => $i_size),
++               'postal_code' => array('type' => 'text', 'size' => $i_size),
++               'location_place' => array('type' => 'text', 'size' => $i_size),
+             ),
+         ),
+         'groups' => array(
+@@ -74,7 +82,7 @@
+             'class' => $microformats['email'],
+         ), Q($record['email']));
+     }
+-    foreach (array('name', 'firstname', 'surname') as $col) {
++    foreach (array('name', 'firstname', 'surname',  'work_number', 'home_number', 'fax_number', 'mobile_number', 'title', 'street', 'postal_code', 'location_place') as $col) {
+         if ($record[$col]) {
+             $form['info']['content'][$col]['value'] = html::span($microformats[$col], Q($record[$col]));
+         }
